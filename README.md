@@ -1,38 +1,38 @@
 # pootis-solution
 
-Finds visible cash-handling violations in cash desk CCTV recordings and returns a verdict, timecodes and evidence frames.
-Everything runs locally: no external AI APIs, no face recognition.
+Сервис находит видимые нарушения кассовой дисциплины на записях камер кассового помещения. На выходе вердикт, таймкоды и кадры-доказательства.
+Всё работает локально: без внешних AI API и без распознавания лиц.
 
-**Demo:** _link coming soon_
+**Демо:** _ссылка скоро будет_
 
-## How it works
+## Как устроено
 
 ```
-video ─► YOLO (people, cash, safe, counting machine, bags) ─► rules ─► Qwen3-VL check ─► verdict + frames
-                                     └─ pixel check: cash room door left open
+видео -> YOLO (люди, деньги, сейф, счётная машинка, сумки) -> правила -> проверка Qwen3-VL -> вердикт + кадры
+                                    \-> проверка по пикселям: дверь кассы оставлена открытой
 ```
 
-- `perception/` — YOLO training (`train_yolo.py`), rule engine over detections (`model.py`), door check (`scene.py`)
-- `vlm/` — Qwen3-VL via Ollama: confirms weak events and writes the description; `taxonomy.json` holds violation types and the regulation clause for each
-- `service/` — FastAPI app: upload page, job queue, REST API
+- `perception/` - обучение YOLO (`train_yolo.py`), правила поверх детекций (`model.py`), проверка двери (`scene.py`)
+- `vlm/` - Qwen3-VL через Ollama: подтверждает слабые события и пишет описание; в `taxonomy.json` типы нарушений и пункт нормативки для каждого
+- `service/` - FastAPI: страница загрузки, очередь задач, REST API
 
-Strong rules (left unattended with valuables, bag accepted without check, outsider at the desk, previous client's cash on the desk, door left open) decide on their own.
-Weak ones (counting by hand, cashier left the workplace) are kept only if Qwen confirms them.
+Сильные правила (ушёл и оставил ценности, принял сумку без проверки, посторонний у стола, деньги прошлого клиента на столе, дверь открыта) дают вердикт сами.
+Слабые (пересчёт руками, кассир ушёл с рабочего места) остаются, только если их подтвердил Qwen.
 
-## Run
+## Запуск
 
-Requirements: Python 3.11+, NVIDIA GPU with 4 GB+, [Ollama](https://ollama.com) 0.12.7+.
+Нужно: Python 3.11+, видеокарта NVIDIA от 4 ГБ, [Ollama](https://ollama.com) 0.12.7+.
 
 ```bash
 pip install -r service/requirements.txt
 ollama pull qwen3-vl:2b
-# put trained weights to weights/best.pt (or set YOLO_WEIGHTS)
+# обученные веса положить в weights/best.pt (или задать YOLO_WEIGHTS)
 uvicorn service.app:app --host 0.0.0.0 --port 8000
 ```
 
-On Windows: `start_service.bat`. Public URL: `start_tunnel.bat` (Cloudflare quick tunnel).
+На Windows: `start_service.bat`. Публичный адрес: `start_tunnel.bat` (Cloudflare quick tunnel).
 
-Open `http://localhost:8000`. The API key is printed on start and stored in `service/.api_key` (or set `API_KEY`).
+Открыть `http://localhost:8000`. API-ключ печатается при старте и лежит в `service/.api_key` (или задать `API_KEY`).
 
 ## API
 
@@ -47,32 +47,38 @@ curl http://localhost:8000/api/v1/jobs/3f2a9c1e -H "X-API-Key: $KEY"
 ```
 
 `status`: `processing` | `done` | `failed`. `verdict`: `violation` | `no_violation`.
-Uploaded videos are deleted right after processing.
+Загруженное видео удаляется сразу после обработки.
 
-## Config
+## Настройки
 
-| env | default | |
+| env | по умолчанию | |
 |---|---|---|
-| `YOLO_WEIGHTS` | `weights/best.pt` | trained YOLO weights |
-| `VLM_MODEL` | `qwen3-vl:2b` | Ollama model |
-| `VLM_BACKEND` | `ollama` | `none` = rules only |
-| `DEADLINE_SEC` | `240` | time budget per video, counted from upload |
-| `MAX_WEAK_CHECKS` | `3` | Qwen calls per video |
+| `YOLO_WEIGHTS` | `weights/best.pt` | веса YOLO |
+| `VLM_MODEL` | `qwen3-vl:2b` | модель в Ollama |
+| `VLM_BACKEND` | `ollama` | `none` = только правила |
+| `DEADLINE_SEC` | `240` | лимит времени на видео, считается от загрузки |
+| `MAX_WEAK_CHECKS` | `3` | вызовов Qwen на видео |
 
-## Train / evaluate
+## Обучение и оценка
 
 ```bash
-python perception/train_yolo.py train --from <weights>   # fine-tune
-python perception/train_yolo.py predict                  # detections for perception/model.py
-python perception/model.py                               # rules vs labels: TP/FP/FN/TN
+python perception/train_yolo.py train --from <weights>   # дообучение
+python perception/train_yolo.py predict                  # детекции для perception/model.py
+python perception/model.py                               # правила против разметки: TP/FP/FN/TN
 ```
 
-## Limitations
+## Ограничения
 
-- Counting by hand next to a working counting machine is often missed — the 2B VLM can't tell it apart reliably.
-- The door check assumes the door is in the upper-left part of the frame.
-- YOLO was trained on a few hundred frames from a handful of camera setups; new rooms/angles will be weaker.
+- Пересчёт руками рядом с работающей машинкой часто пропускается: модель на 2B не отличает его надёжно.
+- Проверка двери рассчитана на то, что дверь в левой верхней части кадра.
+- YOLO обучен на нескольких сотнях кадров с пары ракурсов, на новых помещениях и углах будет слабее.
 
-## Licenses
+## Пара слов от нас
 
-Ultralytics YOLO — AGPL-3.0. Qwen3-VL — Apache-2.0. FastAPI, OpenCV — permissive.
+Всё это собрано на обычном домашнем железе: одна видеокарта на 4 ГБ, YOLO дообучен на паре сотен кадров, а VLM самая маленькая (2B), потому что большая просто не влезает.
+Модель не идеальна: что-то пропускает, где-то ошибается, это видно по разделу выше. Но мы честно выжали максимум из того, что было под рукой.
+С нормальной видеокартой, моделью покрупнее (Qwen3-VL 8B и выше) и большей разметкой результат будет заметно лучше, архитектура это позволяет без переделки: достаточно поменять `VLM_MODEL` и веса YOLO.
+
+## Лицензии
+
+Ultralytics YOLO - AGPL-3.0. Qwen3-VL - Apache-2.0. FastAPI, OpenCV - свободные лицензии.
