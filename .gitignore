@@ -1,0 +1,36 @@
+# secrets
+.api_key
+service/.api_key
+.env
+
+# data: videos, frames, labels, model weights — not published
+videos/
+data/
+*.mov
+*.mp4
+*.avi
+*.zip
+*.pt
+*.onnx
+*.engine
+weights/*
+!weights/.gitkeep
+runs/
+labels/
+datasets/
+*.xlsx
+*.csv
+
+# runtime output
+service/jobs/
+service/eval_out/
+service/det_cache/
+cloudflared.exe
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/

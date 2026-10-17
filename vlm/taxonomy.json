@@ -1,0 +1,129 @@
+{
+ "_comment": "Типы нарушений, выведенные из просмотра 22 размеченных видео (docs/sources.md, labels/annotations_draft.csv). Ссылки — только на проверенные пункты. Официальные тексты: adilet.zan.kz (рег. № 19680 и № 20075).",
+ "types": [
+  {
+   "id": "LEFT_UNATTENDED",
+   "name_ru": "Кассир покинул рабочее место, оставив наличные / ценности без присмотра",
+   "visual": "the cashier stands up and walks out of the room through the door while banknotes, a cash bag or an open safe remain at the workplace; also: the cashier leaves the room while the laptop screen still shows an open working program (not a lock screen)",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231 (Правила осуществления кассовых операций…)",
+   "clause": "п. 20, п. 22",
+   "quote": "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте… (п. 20); Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента. (п. 22)",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "UNAUTHORIZED_ENTRY",
+   "name_ru": "Постороннее лицо вошло в кассовое помещение во время работы с наличными",
+   "visual": "a person who is not the cashier and not the client being served enters the room and approaches the cashier or the desk while another client is already being served, or comes to the cashier's side of the desk",
+   "doc": "Постановление Правления НБРК от 24.02.2020 № 14 (Правила организации охраны и устройства помещений банков…)",
+   "clause": "п. 8, п. 16 подп. 1)",
+   "quote": "…одним закрывающимся служебным входом (п. 8); каждая касса имеет отдельный вход с закрывающейся на замок дверью (п. 16)",
+   "url": "https://adilet.zan.kz/rus/docs/V2000020075"
+  },
+  {
+   "id": "PERSONAL_ITEMS",
+   "name_ru": "Личные вещи, еда или напитки на рабочем месте кассира",
+   "visual": "the cashier puts a coat, handbag, drink cup, can or other personal belongings on the desk next to the cash",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 12",
+   "quote": "Хранение личных вещей, наличных денег и ценностей работников банка осуществляется вне кассового узла…",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "PHONE_AT_WORKPLACE",
+   "name_ru": "Использование смартфона (с камерой) на рабочем месте кассира",
+   "visual": "the cashier holds or looks at a smartphone at the workplace",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 12",
+   "quote": "Допускается внос… средств связи, не имеющих функции фото и видео фиксации",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "MANUAL_COUNT_NO_CHECK",
+   "name_ru": "Пересчёт денег вручную без проверки на счётно-сортировальном оборудовании",
+   "visual": "the cashier counts banknotes by hand (and/or passes them to the client) without putting them through the banknote counting machine standing on the desk",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 9, п. 36, п. 41",
+   "quote": "кассовый работник проверяет платежность и подлинность наличных денег (п. 36); на оборудовании, имеющем функцию проверки не менее двух машиночитаемых защитных признаков… (п. 41)",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "COUNT_WITHOUT_CLIENT",
+   "name_ru": "Пересчёт наличных не в присутствии клиента (клиент ушёл до окончания пересчёта)",
+   "visual": "the client stands up and leaves while the cashier is still counting / processing the client's cash",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 20, п. 35",
+   "quote": "Наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента. (п. 20)",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "BAG_NO_CHECK",
+   "name_ru": "Приём инкассаторской сумки без проверки целостности и пломбы",
+   "visual": "a person brings a sealed cash bag, puts it on the desk and the cashier takes it without inspecting the seal and bag integrity",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 24 подп. 3), 4); п. 25",
+   "quote": "3) проверяет целостность сумки; 4) проверяет правильность пломбирования сумки.",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "SAFE_LEFT_OPEN",
+   "name_ru": "Сейф оставлен открытым без присмотра",
+   "visual": "the door of the grey safe stays open while the cashier does something else or walks away",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 20",
+   "quote": "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте…, закрывающихся на ключ",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "PREV_CASH_ON_DESK",
+   "name_ru": "Ранее принятые деньги не убраны в запирающееся устройство при обслуживании следующего клиента",
+   "visual": "a cash bundle from the previous operation stays openly on the desk while the previous client has left and the next client comes in and is served",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 20",
+   "quote": "На рабочем месте кассового работника находятся наличные деньги клиента. Все ранее принятые наличные деньги хранятся в специальных устройствах…, закрывающихся на ключ (металлический шкаф, сейф, тележка, ящики стола, тумба).",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "CASH_MIXED",
+   "name_ru": "Деньги клиента смешаны с ранее принятыми наличными (положены на другую пачку без пересчёта)",
+   "visual": "the cashier takes banknotes from the client and puts them directly on top of another cash bundle already lying on the desk, without counting them",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 20",
+   "quote": "Наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента. На рабочем месте кассового работника находятся наличные деньги клиента.",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "DOOR_LEFT_OPEN",
+   "name_ru": "Дверь кассового помещения оставлена открытой",
+   "visual": "the glass door of the cash room stays open after the cashier enters or works (the door leaf is swung open and the corridor is visible through the opening); a non-staff person may appear in the doorway",
+   "doc": "Постановление Правления НБРК от 24.02.2020 № 14 (Правила организации охраны и устройства помещений банков…)",
+   "clause": "п. 8, п. 16 подп. 1)",
+   "quote": "…одним закрывающимся служебным входом (п. 8); каждая касса имеет отдельный вход с закрывающейся на замок дверью (п. 16)",
+   "url": "https://adilet.zan.kz/rus/docs/V2000020075"
+  },
+  {
+   "id": "CLIENT_NO_ID",
+   "name_ru": "Наличные приняты без проверки документа клиента",
+   "visual": "a client hands over banknotes and the cashier takes and counts them, but no identity card or document is shown or placed on the desk",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 19 подп. 1), п. 31 подп. 1)",
+   "quote": "проводит визуальную идентификацию клиента, вносящего наличные деньги, с документом, удостоверяющим его личность (п. 19 подп. 1)",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  },
+  {
+   "id": "SAFE_KEY_LEFT",
+   "name_ru": "Ключ оставлен в замке сейфа",
+   "visual": "a key remains inserted in the lock of the grey safe after the cashier closes it and walks away",
+   "doc": "Постановление Правления НБРК от 29.11.2019 № 231",
+   "clause": "п. 20",
+   "quote": "Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте кассового работника, закрывающихся на ключ",
+   "url": "https://adilet.zan.kz/rus/docs/V1900019680"
+  }
+ ],
+ "other": {
+  "id": "OTHER_SUSPICIOUS",
+  "name_ru": "Иное подозрительное действие (требует проверки человеком)",
+  "doc": null,
+  "clause": null,
+  "url": null
+ }
+}

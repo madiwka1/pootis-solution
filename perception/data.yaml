@@ -1,0 +1,15 @@
+path: datasets/cashroom
+train: images/train
+val: images/val
+names:
+  0: person
+  1: cash
+  2: cash_bag
+  3: phone
+  4: safe_open
+  5: safe_closed
+  6: counting_machine
+  7: handbag
+  8: drink
+  9: id_card
+  10: folder

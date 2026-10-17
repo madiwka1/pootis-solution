@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cash Desk Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fff;--fg:#0a0a0a;--mut:#6b6b6b;--line:#e6e6e6;--soft:#f5f5f5;--inv:#fff;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0a0a0a;--fg:#f2f2f2;--mut:#8a8a8a;--line:#262626;--soft:#141414;--inv:#0a0a0a}
+}
+:root[data-theme="dark"]{--bg:#0a0a0a;--fg:#f2f2f2;--mut:#8a8a8a;--line:#262626;--soft:#141414;--inv:#0a0a0a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px 96px}
+header{display:flex;align-items:center;justify-content:space-between;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+.dot{width:10px;height:10px;background:var(--fg);border-radius:50%}
+.hdr-r{display:flex;gap:8px;align-items:center}
+.ghost{background:none;border:1px solid var(--line);color:var(--fg);border-radius:999px;padding:6px 12px;font:500 13px var(--sans);cursor:pointer}
+.ghost:hover{border-color:var(--fg)}
+h1{font-size:clamp(32px,6vw,56px);line-height:1.02;letter-spacing:-.035em;margin:56px 0 14px;font-weight:700}
+.lead{color:var(--mut);max-width:620px;margin:0 0 36px;font-size:16px}
+.grid{display:grid;grid-template-columns:1fr 300px;gap:16px}
+@media(max-width:780px){.grid{grid-template-columns:1fr}}
+.drop{border:1.5px dashed var(--line);border-radius:18px;min-height:220px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;padding:28px;text-align:center;transition:.15s}
+.drop:hover,.drop.on{border-color:var(--fg);background:var(--soft)}
+.drop .big{font-size:18px;font-weight:600;letter-spacing:-.01em}
+.drop .small{color:var(--mut);font-size:13px}
+.drop.has{border-style:solid;border-color:var(--fg)}
+.side{border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:14px}
+label{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+input[type=password]{width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);font:14px var(--mono)}
+input:focus{outline:none;border-color:var(--fg)}
+.btn{width:100%;background:var(--fg);color:var(--inv);border:0;border-radius:12px;padding:13px 16px;font:600 15px var(--sans);cursor:pointer;transition:opacity .15s}
+.btn:disabled{opacity:.25;cursor:default}
+.hint{font-size:12px;color:var(--mut)}
+.status{margin-top:22px;display:none;align-items:center;gap:12px;font:13px var(--mono);color:var(--mut)}
+.status.show{display:flex}
+.bar{flex:1;height:2px;background:var(--line);position:relative;overflow:hidden;border-radius:2px}
+.bar i{position:absolute;inset:0;width:35%;background:var(--fg);animation:run 1.2s ease-in-out infinite}
+@keyframes run{0%{left:-35%}100%{left:100%}}
+.err{color:var(--fg);font-weight:600}
+#out{margin-top:40px}
+.verdict{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;border-radius:18px;border:1px solid var(--fg)}
+.verdict.bad{background:var(--fg);color:var(--inv)}
+.verdict h2{margin:0;font-size:24px;letter-spacing:-.02em}
+.verdict .meta{font:12px var(--mono);opacity:.7;text-align:right;white-space:nowrap}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:16px}
+.player{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#000;display:none}
+.player.show{display:block}
+.player video{width:100%;max-height:420px;display:block;background:#000}
+.ev{border:1px solid var(--line);border-radius:18px;padding:20px;display:grid;grid-template-columns:300px 1fr;gap:22px}
+@media(max-width:700px){.ev{grid-template-columns:1fr}}
+.frames{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;align-content:start}
+.frames figure{margin:0;position:relative;cursor:zoom-in}
+.frames img{width:100%;display:block;border-radius:10px;border:1px solid var(--line);filter:grayscale(.15)}
+.frames figcaption{position:absolute;left:8px;bottom:8px;background:var(--fg);color:var(--inv);font:11px var(--mono);padding:2px 7px;border-radius:6px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tc{font:500 13px var(--mono);border:1px solid var(--fg);border-radius:999px;padding:3px 10px;background:none;color:var(--fg);cursor:pointer}
+.tc:hover{background:var(--fg);color:var(--inv)}
+.num{font:12px var(--mono);color:var(--mut)}
+.type{font-size:19px;font-weight:600;letter-spacing:-.015em;margin:10px 0 6px}
+.desc{color:var(--fg);opacity:.85;margin:0}
+.law{margin-top:16px;padding:14px 16px;border-left:2px solid var(--fg);background:var(--soft);border-radius:0 10px 10px 0;font-size:14px}
+.law b{display:block;margin-bottom:2px}
+.law q{display:block;color:var(--mut);margin-top:6px;quotes:"«" "»"}
+.law a{font:12px var(--mono);display:inline-block;margin-top:8px}
+.src{margin-top:12px;font:11px var(--mono);color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.empty{padding:28px;border:1px solid var(--line);border-radius:18px;color:var(--mut);text-align:center}
+details{margin-top:16px;border:1px solid var(--line);border-radius:14px;padding:12px 16px}
+summary{cursor:pointer;font:500 13px var(--mono)}
+pre{overflow:auto;font:12px/1.5 var(--mono);color:var(--mut);max-height:360px;margin:12px 0 0}
+footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--mut);font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;padding:24px;z-index:9;cursor:zoom-out}
+.lb.show{display:flex}
+.lb img{max-width:100%;max-height:100%;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span>Cash Desk Audit</div>
+    <div class="hdr-r">
+      <button class="ghost" id="theme" title="Светлая / тёмная тема">Тема</button>
+      <a class="ghost" href="/docs" target="_blank" rel="noopener">API</a>
+    </div>
+  </header>
+
+  <h1>Контроль кассовой<br>дисциплины</h1>
+  <p class="lead">Загрузите запись с камеры кассы. Сервис найдёт визуальные признаки возможных нарушений и покажет таймкод, кадр и пункт нормативного акта НБРК. Результат — подсказка проверяющему, не заключение.</p>
+
+  <div class="grid">
+    <div id="drop" class="drop" tabindex="0">
+      <div class="big" id="dropTitle">Перетащите видео сюда</div>
+      <div class="small" id="dropSub">или нажмите, чтобы выбрать · .mov / .mp4</div>
+      <input id="file" type="file" accept=".mov,.mp4,video/*" hidden>
+    </div>
+    <div class="side">
+      <div><label for="key">API-ключ</label><input id="key" type="password" placeholder="X-API-Key" autocomplete="off"></div>
+      <button class="btn" id="go" disabled>Проверить видео</button>
+      <div class="hint">Видео удаляется сразу после анализа. Лица не распознаются.</div>
+    </div>
+  </div>
+
+  <div class="status" id="st"><span id="stText">Загрузка…</span><div class="bar"><i></i></div><span id="stTime">0 с</span></div>
+  <div id="out"></div>
+
+  <footer>
+    <span>YOLO · правила · Qwen-VL (локально, без облака)</span>
+    <span>Нормы: Постановления Правления НБРК № 231 и № 14 · adilet.zan.kz</span>
+  </footer>
+</div>
+<div class="lb" id="lb"><img id="lbImg" alt=""></div>
+
+<script>
+const $=s=>document.querySelector(s);
+let file=null, videoURL=null, timer=null;
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+
+// тема
+const applyTheme=t=>{if(t)document.documentElement.setAttribute('data-theme',t)};
+applyTheme(store.get('theme'));
+$('#theme').onclick=()=>{const cur=document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');const n=cur==='dark'?'light':'dark';applyTheme(n);store.set('theme',n)};
+
+$('#key').value=store.get('apikey')||'';
+const drop=$('#drop'),inp=$('#file');
+drop.onclick=()=>inp.click();
+drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')inp.click()};
+inp.onchange=()=>pick(inp.files[0]);
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('on')};
+drop.ondragleave=()=>drop.classList.remove('on');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('on');pick(e.dataTransfer.files[0])};
+$('#key').oninput=ready;
+function pick(f){if(!f)return;file=f;drop.classList.add('has');$('#dropTitle').textContent=f.name;$('#dropSub').textContent=(f.size/1048576).toFixed(1)+' МБ · нажмите, чтобы заменить';
+  if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(f);ready()}
+function ready(){$('#go').disabled=!(file&&$('#key').value.trim())}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=t=>{t=+t||0;const m=Math.floor(t/60),s=(t%60).toFixed(1).padStart(4,'0');return `${m}:${s}`};
+function status(text,run,err){const st=$('#st');st.classList.add('show');$('#stText').innerHTML=err?`<span class="err">${esc(text)}</span>`:esc(text);st.querySelector('.bar').style.display=run?'block':'none';$('#stTime').style.display=run?'inline':'none'}
+function startTimer(){const t0=Date.now();clearInterval(timer);timer=setInterval(()=>$('#stTime').textContent=Math.round((Date.now()-t0)/1000)+' с',500)}
+
+$('#go').onclick=async()=>{
+  const key=$('#key').value.trim();store.set('apikey',key);
+  $('#go').disabled=true;$('#out').innerHTML='';status('Загрузка видео',true);startTimer();
+  try{
+    const fd=new FormData();fd.append('file',file);
+    const r=await fetch('/api/v1/analyze',{method:'POST',headers:{'X-API-Key':key},body:fd});
+    if(!r.ok){let d='';try{d=(await r.json()).detail}catch(e){}throw new Error(r.status===401?'Неверный API-ключ':(d||'Ошибка '+r.status))}
+    const {job_id}=await r.json();status('Анализ · job '+job_id,true);
+    const poll=async()=>{
+      const jr=await fetch(`/api/v1/jobs/${job_id}?details=1`,{headers:{'X-API-Key':key}});
+      const j=await jr.json();
+      if(j.status==='processing')return setTimeout(poll,2000);
+      clearInterval(timer);ready();
+      if(j.status==='failed'){status('Не удалось обработать: '+(j.error||''),false,true);return}
+      $('#st').classList.remove('show');render(j,key);
+    };poll();
+  }catch(e){clearInterval(timer);ready();status(e.message,false,true)}
+};
+
+function render(j,key){
+  const v=j.violations||[], bad=j.verdict==='violation';
+  let h=`<div class="verdict ${bad?'bad':''}"><h2>${bad?'Обнаружены признаки нарушений':'Нарушения не обнаружены'}</h2>
+    <div class="meta">${bad?v.length+' '+(v.length===1?'событие':'событий'):'violations: 0'}<br>${j._elapsed_sec!=null?j._elapsed_sec+' с':''}</div></div>
+    <div class="layout"><div class="player ${videoURL?'show':''}"><video id="vid" src="${videoURL||''}" controls playsinline preload="metadata"></video></div>`;
+  if(!v.length)h+=`<div class="empty">Визуальных признаков нарушений не найдено.</div>`;
+  v.forEach((x,i)=>{
+    const r=x._rule||{};
+    h+=`<article class="ev"><div class="frames">${(x.evidence_frames||[]).map(f=>`<figure data-src="data:image/jpeg;base64,${f.image_base64}"><img loading="lazy" src="data:image/jpeg;base64,${f.image_base64}" alt="Кадр ${fmt(f.timestamp_sec)}"><figcaption>${fmt(f.timestamp_sec)}</figcaption></figure>`).join('')}</div>
+      <div><div class="row"><button class="tc" data-t="${x.timecode_sec}">▶ ${fmt(x.timecode_sec)}</button><span class="num">${String(i+1).padStart(2,'0')} / ${String(v.length).padStart(2,'0')}</span></div>
+      <div class="type">${esc(x.type)}</div><p class="desc">${esc(String(x.description||'').split(' Может указывать на нарушение:')[0])}</p>
+      ${r.doc?`<div class="law"><b>${esc(r.doc)}</b>${esc(r.clause)}${r.quote?`<q>${esc(r.quote)}</q>`:''}${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">adilet.zan.kz ↗</a>`:''}</div>`:`<div class="law">Тип вне справочника — требует проверки человеком.</div>`}
+      <div class="src">${esc(x._source||'')}${x._vlm?' · VLM: '+esc(x._vlm):''}</div></div></article>`;
+  });
+  const pub={job_id:j.job_id,status:j.status,verdict:j.verdict,violations:v.map(x=>({type:x.type,timecode_sec:x.timecode_sec,description:x.description,evidence_frames:(x.evidence_frames||[]).map(f=>({timestamp_sec:f.timestamp_sec,image_base64:f.image_base64.slice(0,24)+'…'}))}))};
+  h+=`</div><details><summary>Ответ API (JSON)</summary><pre>${esc(JSON.stringify(pub,null,2))}</pre></details>`;
+  $('#out').innerHTML=h;
+  // .mov (HEVC) Chrome часто не играет — тогда плеер прячем, остаются кадры-доказательства
+  const vd=$('#vid');if(vd){vd.onerror=()=>vd.parentElement.classList.remove('show');
+    setTimeout(()=>{if(!(vd.videoWidth>0))vd.parentElement.classList.remove('show')},2500)}
+  document.querySelectorAll('.tc').forEach(b=>b.onclick=()=>{const vd=$('#vid');if(vd&&videoURL){vd.currentTime=+b.dataset.t;vd.play();vd.scrollIntoView({behavior:'smooth',block:'center'})}});
+  document.querySelectorAll('.frames figure').forEach(f=>f.onclick=()=>{$('#lbImg').src=f.dataset.src;$('#lb').classList.add('show')});
+}
+$('#lb').onclick=()=>$('#lb').classList.remove('show');
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('#lb').classList.remove('show')});
+</script>
+</body>
+</html>

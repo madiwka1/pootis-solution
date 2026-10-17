@@ -1,0 +1,10 @@
+# GPU machine (CUDA). Install torch for your CUDA first: https://pytorch.org/get-started/locally/
+torch>=2.3
+transformers>=4.49   # Qwen2.5-VL; use >=4.57 for Qwen3-VL
+accelerate>=0.33
+opencv-python-headless>=4.9
+pillow
+openpyxl
+# optional
+# bitsandbytes   # VLM_4BIT=1 on 12-16 GB GPUs
+# flash-attn     # VLM_ATTN=flash_attention_2
