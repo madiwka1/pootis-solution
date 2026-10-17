@@ -73,7 +73,7 @@ def build_result(job_id, frames, events, tax, cfg: VLMConfig):
             desc += f" Возможное нарушение: {rule['doc']}, {rule['clause']}."
         out.append({"type": rule["name_ru"], "timecode_sec": round(e["t_peak"], 2), "description": desc,
                     "evidence_frames": ev,
-                    # extra fields for UI (ignored by jury schema)
+                    # extra fields for UI (not part of the public schema)
                     "type_id": e["type"], "confidence": round(e["confidence"], 3),
                     "rule": {k: rule.get(k) for k in ("doc", "clause", "url")}})
     return {"job_id": job_id, "status": "done", "verdict": "violation" if out else "no_violation", "violations": out}

@@ -1,6 +1,6 @@
 """Быстрая проверка Qwen через Ollama на одном кадре: что модель реально отвечает и сколько думает.
 
-  python -m service.vlm_check --video C:\\...\\videos\\X-28.mov --t 10
+  python -m service.vlm_check --video C:\\...\\videos\\X-1.mov --t 10
 """
 import argparse
 import sys

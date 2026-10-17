@@ -187,7 +187,7 @@ def verify_left(vlm, frames, ev, anchor):
     a = parse_json(vlm.generate([(rgb, left_checklist_prompt([f[0] for f in sel]))])[0])
     screen = str(a.get("laptop_screen", "")).lower()
     left_things = screen == "open_program" or a.get("key_in_safe") is True or a.get("valuables_on_desk") is True
-    # кассир на месте (правило ошиблось: ушёл клиент, а не кассир — X-5, X-12, X-19) -> не нарушение
+    # кассир на месте (правило ошиблось: ушёл клиент, а не кассир) -> не нарушение
     a["confirmed"] = left_things and a.get("person_at_desk") is not True
     a["confidence"] = 0.8 if a["confirmed"] else 0.7
     fi = a.get("frame_index", -1)
@@ -210,7 +210,7 @@ def verify(vlm, cfg, frames, ev, anchor=None):
         a = parse_json(raw)
         if "confirmed" not in a and ("cash_in_hands" in a or "counting_by_hand" in a):
             # все три ответа должны сходиться: деньги в руках И пересчёт пальцами И без машинки
-            # («counting=True при hands=False» — противоречие, на чистых X-14, X-39 это давало ложные тревоги)
+            # («counting=True при hands=False» — противоречие, давало ложные тревоги)
             a["confirmed"] = (a.get("cash_in_hands") is True and a.get("counting_by_hand") is True
                               and a.get("machine_used") is not True)
             a["confidence"] = 0.8

@@ -1,6 +1,6 @@
 """Прогон полной цепочки (YOLO -> правила -> Qwen) по нескольким видео без HTTP + сводка против разметки.
 
-  python -m service.batch_eval --videos videos --only X-1,X-13,X-15,X-34,X-44,X-5,X-8,X-14,X-19,X-35,X-39,X-48
+  python -m service.batch_eval --videos videos --only X-1,X-2,X-3
   python -m service.batch_eval --videos videos              # все .mov в папке
 
 Результат: service/eval_out/<video>.json (полный ответ, с полями _vlm/_rule) и eval_out/summary.csv.

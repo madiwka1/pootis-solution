@@ -43,7 +43,7 @@ CFG = {
     "phone_min_s": 1,
     "personal_min_s": 2,
     "entry_persons": 3,        # людей одновременно (кассир + клиент = 2)
-    "entry_min_s": 3,          # 3-й человек >= N с (1-2 с — проход/отражение: чистые X-3, X-35)
+    "entry_min_s": 3,          # 3-й человек >= N с (1-2 с — проход/отражение)
     "near_px": 40,             # «рядом» (сейф без людей рядом)
     "machine_px": 10,          # деньги «в машинке» — рамки пересекаются (с запасом N px)
     "desk_r": 0.35,             # кассир «на месте»: центр человека в радиусе desk_r * рост от точки рабочего места
@@ -272,19 +272,19 @@ def detect(df: pd.DataFrame, c=CFG) -> pd.DataFrame:
             add("LEFT_UNATTENDED", s, e)
         else:
             # ценностей YOLO не видит, но нарушение может быть в том, что не детектируется:
-            # незаблокированный компьютер (X-11, X-28), ключ в сейфе (X-22). Решает Qwen по кадрам.
+            # незаблокированный компьютер, ключ в сейфе. Решает Qwen по кадрам.
             add("LEFT_UNATTENDED", s, e, weak=True)
     # сейф открыт, у сейфа никого И кассир не за столом. Открытый сейф при кассире на месте —
-    # обычная работа (чистые X-5, X-8, X-14, X-19, X-35, X-39)
+    # обычная работа
     for s, e in runs(F.safe_alone & ~F.at_desk & seen, c["safe_open_alone_s"]):
         add("SAFE_LEFT_OPEN", s, e)
     for s, e in runs(F.phone_in_hand | F.phone, c["phone_min_s"]):
         add("PHONE_AT_WORKPLACE", s, e)
-    # личные вещи в зоне работы с деньгами: напиток/сумка, пока на столе деньги (чистый X-25: банки без денег)
+    # личные вещи в зоне работы с деньгами: напиток/сумка, пока на столе деньги
     cash_near = close(F.cash, c["personal_cash_s"])
     for s, e in runs(F.personal & cash_near, c["personal_min_s"]):
         add("PERSONAL_ITEMS", s, e)
-    # «сумка» у стола, когда кассир один (клиента нет) — это её вещи (пальто/сумка, X-40), а не инкассация
+    # «сумка» у стола, когда кассир один (клиента нет) — это её вещи (пальто/сумка), а не инкассация
     bag_desk = F.bag_at_desk if not isinstance(F.bag_at_desk, bool) else pd.Series(False, index=F.index)
     for s, e in runs(F.bag & (n <= 1), c["own_bag_min_s"]):
         bd = bag_desk.loc[s:e]
@@ -309,7 +309,7 @@ def detect(df: pd.DataFrame, c=CFG) -> pd.DataFrame:
         if (w.cash | w.cash_on_machine).any():
             add("COUNT_WITHOUT_CLIENT", max(0, d - 3), d, at=max(0, d - 2))
     # инкассаторская сумка: принесли (>= 2 людей), кассир забрал, и сдатчик ушёл почти сразу — проверки пломбы не было.
-    # Если сдатчик остаётся (чистый X-16) — идёт приём с проверкой.
+    # Если сдатчик остаётся — идёт приём с проверкой.
     for s, e in runs(F.bag & (n >= c["bag_persons"]), 1):
         bd = bag_desk.loc[s:]
         t_desk = int(bd[bd].index[0]) if bd.any() else s
@@ -320,7 +320,7 @@ def detect(df: pd.DataFrame, c=CFG) -> pd.DataFrame:
     # ---- слабые признаки: по детекциям не отличить от нормы, решает Qwen (tier=weak) ----
     nc = F.n_cash
     for s in nc.index[1:]:
-        # чужие деньги кладут на пачку: только при клиенте (кассир одна раскладывает свои пачки — норма: X-21, X-43, X-45)
+        # чужие деньги кладут на пачку: только при клиенте (кассир одна раскладывает свои пачки — норма)
         if nc[s - 1] >= 2 and nc[s] < nc[s - 1] and n[s] >= 2 and F.cash_static.loc[max(0, s - c["merge_window_s"]):s].any() \
                 and not F.cash_on_machine.loc[max(0, s - 2):s].any():
             add("CASH_MIXED", s - 1, s, at=s - 1, weak=True)

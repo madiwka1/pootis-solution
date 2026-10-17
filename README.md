@@ -34,6 +34,8 @@ ollama pull qwen3-vl:2b
 uvicorn service.app:app --host 0.0.0.0 --port 8000
 ```
 
+На RunPod (шаблон PyTorch, открыть HTTP-порт 8000): `API_KEY=... bash deploy/runpod.sh`.
+
 На Windows: `start_service.bat`. Публичный адрес: `start_tunnel.bat` (Cloudflare quick tunnel).
 
 Открыть `http://localhost:8000`. API-ключ печатается при старте и лежит в `service/.api_key` (или задать `API_KEY`).
