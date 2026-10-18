@@ -1,4 +1,4 @@
-"""Local VLM module: sliding-window video analysis with a local vision-language model."""
+"""Локальная VLM (Qwen3-VL)."""
 from .config import VLMConfig
 from .analyze import analyze_video
 

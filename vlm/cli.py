@@ -16,7 +16,7 @@ from .config import VLMConfig
 
 
 def norm_name(s: str) -> str:
-    """'X-1' (Latin) and 'Х-1' (Cyrillic) -> 'X-1'."""
+    """Кириллическая Х -> латинская."""
     s = unicodedata.normalize("NFC", os.path.splitext(os.path.basename(str(s)))[0]).strip()
     return s.replace("Х", "X").replace("х", "x")
 

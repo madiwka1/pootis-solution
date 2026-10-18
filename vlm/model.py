@@ -12,7 +12,7 @@ from .prompts import SYSTEM
 
 
 class MockVLM:
-    """Deterministic fake answers so the pipeline/API can be built and tested on any laptop."""
+    """Заглушка для разработки без GPU."""
 
     def __init__(self, cfg: VLMConfig):
         self.cfg = cfg
@@ -31,7 +31,6 @@ class MockVLM:
 
 
 class HFVLM:
-    """Qwen2.5-VL / Qwen3-VL (or any image-text-to-text model) via transformers, fully local."""
 
     def __init__(self, cfg: VLMConfig):
         import torch
@@ -63,7 +62,6 @@ class HFVLM:
 
 
 class OllamaVLM:
-    """Qwen3-VL через локальный Ollama (http://127.0.0.1:11434). Данные не уходят из машины."""
 
     def __init__(self, cfg: VLMConfig):
         import requests
@@ -87,28 +85,27 @@ class OllamaVLM:
     def generate(self, batch: List[tuple]) -> List[str]:
         outs = []
         for images, prompt in batch:
-            body = {"model": self.cfg.model_id, "stream": False, "format": "json", "think": False,  # без «размышлений» — сразу JSON
+            body = {"model": self.cfg.model_id, "stream": False, "format": "json", "think": False,
                     "options": {"temperature": 0, "num_predict": self.cfg.max_new_tokens,
-                                "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "4096"))},   # <=3 кадра (~1k токенов каждый) + промпт; больше -> модель вылезает из 4 ГБ на CPU;
-                    "keep_alive": "30m",                                                # меньше контекст -> вся модель в 4 ГБ
+                                "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "4096"))},  # больше - модель не влезает в 4 ГБ
+                    "keep_alive": "30m",
                     "messages": [{"role": "system", "content": SYSTEM},
                                  {"role": "user", "content": prompt, "images": [self._b64(i) for i in images]},
                                  ]}
             if prompt.rstrip().endswith("/no_think") and "counting_by_hand" in prompt:
-                # «подсказка» начала ответа только для вопроса о пересчёте: иначе модель уходит в <think>.
-                # Для «ушла» не нужна: с ней Qwen отвечает быстрее, но хуже различает экран блокировки
+                # префилл "{" только для пересчёта: на «ушла» он ухудшает распознавание экрана
                 body["messages"].append({"role": "assistant", "content": "{"})
             try:
                 r = self.rq.post(self.cfg.ollama_url + "/api/chat", json=body, timeout=self.cfg.ollama_timeout)
                 j = r.json()
-                if "error" in j:                                   # Ollama вернула ошибку (память, модель, параметр)
+                if "error" in j:
                     raise RuntimeError(j["error"])
                 msg = j.get("message", {})
                 txt = msg.get("content") or msg.get("thinking") or ""
                 if not txt.strip():
                     raise RuntimeError("пустой ответ модели")
                 if not txt.lstrip().startswith("{") and "<think>" not in txt[:20]:
-                    txt = "{" + txt                                    # продолжение после подсказки "{"
+                    txt = "{" + txt
                 outs.append(txt)
             except Exception as e:
                 outs.append(json.dumps({"type": "ERROR", "confirmed": False, "error": str(e)[:200]}))

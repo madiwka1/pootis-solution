@@ -1,7 +1,7 @@
-"""Прогон полной цепочки (YOLO -> правила -> Qwen) по нескольким видео без HTTP + сводка против разметки.
+"""Полная цепочка по папке видео без HTTP + сводка против разметки.
 
   python -m service.batch_eval --videos videos --only X-1,X-2,X-3
-  python -m service.batch_eval --videos videos              # все .mov в папке
+  python -m service.batch_eval --videos videos
 
 Результат: service/eval_out/<video>.json (полный ответ, с полями _vlm/_rule) и eval_out/summary.csv.
 Видео не копируются и не сохраняются.
@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "perception"))
 
 from service import pipeline          # noqa: E402
-from model import norm                # noqa: E402  perception/model.py
+from model import norm                # noqa: E402
 
 
 def main():
@@ -52,7 +52,7 @@ def main():
         t0 = time.time()
         try:
             res = pipeline.analyze(v, job_id=vid)
-        except Exception as ex:                       # одно видео не должно ронять весь прогон
+        except Exception as ex:
             print(f"{vid}: ошибка {ex}"); rows.append({"video": vid, "error": str(ex)[:200]}); continue
         (out / f"{vid}.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
         pred = res["verdict"] == "violation"

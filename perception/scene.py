@@ -1,17 +1,13 @@
-"""Признаки сцены по пикселям — то, чего нет в классах YOLO.
-
-door_open: дверь кассы (стеклянная, слева вверху кадра) открыта.
-  Сравниваем зону двери с первым кадром (дверь закрыта), людей из сравнения вырезаем по рамкам YOLO.
-  Открытая створка меняет ~30% пикселей зоны, закрытая — < 10%.
-Без обучения и без лиц: только разница яркости.
+"""Открытая дверь кассы по пикселям: зона двери против первого кадра, люди вырезаны по рамкам YOLO.
+Открытая створка меняет ~30% пикселей зоны, закрытая < 10%.
 """
 import cv2
 import numpy as np
 import pandas as pd
 
-DOOR_REGION = (0.0, 0.0, 0.40, 0.50)   # x0, y0, x1, y1 в долях кадра
-WALL_REGION = (0.62, 0.05, 0.95, 0.40)  # контроль: стена справа. Если меняется и она — это свет/камера, а не дверь
-PIX_THR = 25                            # изменение яркости пикселя, чтобы считать его «другим»
+DOOR_REGION = (0.0, 0.0, 0.40, 0.50)   # доли кадра
+WALL_REGION = (0.62, 0.05, 0.95, 0.40)  # меняется и стена - это свет, не дверь
+PIX_THR = 25
 
 
 def _gray(f):
@@ -19,7 +15,7 @@ def _gray(f):
 
 
 def door_change(frames, det: pd.DataFrame | None, step_s: float = 1.0):
-    """frames: [(t, bgr, idx)] по возрастанию t. -> pd.Series: секунда -> доля изменившихся пикселей зоны двери (0..1)."""
+    """-> секунда: доля изменившихся пикселей зоны двери."""
     if not frames:
         return pd.Series(dtype=float)
     H, W = frames[0][1].shape[:2]
@@ -42,15 +38,13 @@ def door_change(frames, det: pd.DataFrame | None, step_s: float = 1.0):
         d = diff[ys, xs][m[ys, xs]]
         w = diff[wy, wx][m[wy, wx]]
         wall = float(np.mean(w > PIX_THR)) if w.size > 500 else 0.0
-        # свет погас / сменилась экспозиция — зона двери не информативна
         out[int(t)] = np.nan if wall > 0.15 else (float(np.mean(d > PIX_THR)) if d.size > 500 else np.nan)
     return pd.Series(out).sort_index()
 
 
 def door_events(change: pd.Series, n_person: pd.Series | None = None, open_thr=0.25, min_open_s=6):
-    """Дверь открыта >= min_open_s подряд -> событие DOOR_LEFT_OPEN.
-    Таймкод: момент, когда при открытой двери в кадре стало больше людей (кто-то вошёл), иначе начало + 2 с."""
-    s = change.fillna(0) >= open_thr        # неинформативные секунды (свет) не считаем открытой дверью
+    """Таймкод: кто-то вошёл при открытой двери, иначе начало + 2 с."""
+    s = change.fillna(0) >= open_thr
     ev, start = [], None
     idx = list(s.index)
     for i, sec in enumerate(idx + [None]):
@@ -72,7 +66,7 @@ def door_events(change: pd.Series, n_person: pd.Series | None = None, open_thr=0
 
 
 def main():
-    """python scene.py --videos ../videos --det data  ->  data/scene_events.csv (model.py подхватит сам)."""
+    """python scene.py --videos ../videos --det data -> data/scene_events.csv"""
     import argparse
     import sys
     from pathlib import Path

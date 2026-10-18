@@ -1,7 +1,7 @@
 """YOLO: обучение, оценка, прогон по видео.
 
   python train_yolo.py train   [--epochs 40] [--imgsz 960] [--from runs/fraud/v2/weights/best.pt]
-  python train_yolo.py eval    [--weights ...]                    # mAP50 + recall по классам
+  python train_yolo.py eval    [--weights ...]
   python train_yolo.py predict [--weights ...] [--videos videos] [--only X-26,X-17] [--fps 5] [--save-video]
 
 Выход predict: data/<video_id>-detections.csv и .jsonl (поля = perception/contract.py DETECTION_FIELDS).
@@ -28,7 +28,7 @@ DEVICE = 0 if torch.cuda.is_available() else "cpu"
 
 
 def video_id(p) -> str:
-    """'Х-26.mov' (кириллица) -> 'X-26'. Файл на диске НЕ переименовываем."""
+    """Кириллическая Х -> латинская."""
     s = unicodedata.normalize("NFC", Path(p).stem).strip()
     return s.replace("Х", "X").replace("х", "x")
 
@@ -51,7 +51,6 @@ def check_classes(model: YOLO):
                  f"Переобучите: python train_yolo.py train")
 
 
-# ---------------------------------------------------------------- train
 def cmd_train(a):
     start = a.init if a.init else "yolo11s.pt"
     if a.init and not Path(a.init).exists():
@@ -61,21 +60,20 @@ def cmd_train(a):
         data=str(runtime_yaml()),
         epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, device=DEVICE,
         project=str(RUNS), name=RUN_NAME, exist_ok=True, seed=0,
-        val=True,               # без val нет mAP и best.pt = последняя эпоха
-        patience=10,            # ранняя остановка
-        cache="ram",            # кадры в памяти — эпохи в разы быстрее
+        val=True,
+        patience=10,
+        cache="ram",
         workers=4,
-        freeze=a.freeze,        # мало данных: заморозка backbone ускоряет и меньше переобучает
+        freeze=a.freeze,  # мало данных
         cos_lr=True, close_mosaic=5,
-        # аугментации под новый ракурс и свет; flipud НЕ включать (камера всегда сверху)
+        # без flipud: камера всегда сверху
         degrees=10, perspective=0.0005, fliplr=0.5, scale=0.5, hsv_v=0.4, mosaic=1.0,
-        cls=1.0,                # сильнее штраф за пропуск/ошибку класса
+        cls=1.0,
         plots=True,
     )
     print(f"\nГотово: {DEFAULT_WEIGHTS}\nДальше: python train_yolo.py eval")
 
 
-# ---------------------------------------------------------------- eval
 def cmd_eval(a):
     m = YOLO(str(a.weights)); check_classes(m)
     r = m.val(data=str(runtime_yaml()), imgsz=a.imgsz, device=DEVICE, conf=0.001, verbose=False)
@@ -86,7 +84,6 @@ def cmd_eval(a):
     print("\nГлавное — R (recall) по cash / person / drink / id_card: пропуск нарушения недопустим.")
 
 
-# ---------------------------------------------------------------- predict
 def predict_video(m: YOLO, path: Path, a, out_dir: Path):
     vid = video_id(path)
     cap = cv2.VideoCapture(str(path))
@@ -102,14 +99,14 @@ def predict_video(m: YOLO, path: Path, a, out_dir: Path):
         if not cap.grab():
             break
         idx += 1
-        t = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0          # реальное время кадра (VFR-safe)
+        t = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # VFR
         if t + 1e-6 < next_t:
-            continue                                          # прореживание до a.fps — без декодирования
+            continue
         next_t += step
         ok, frame = cap.retrieve()
         if not ok:
             break
-        # persist=False на первом кадре сбрасывает трекер между видео
+        # сброс трекера между видео
         res = m.track(frame, persist=not first, conf=a.conf, imgsz=a.imgsz, device=DEVICE,
                       tracker=a.tracker, verbose=False)[0]
         first = False; n_proc += 1
@@ -150,8 +147,7 @@ def cmd_predict(a):
 
 
 def main():
-    # Запуск без аргументов (кнопка Run в PyCharm / просто python train_yolo.py):
-    # нет весов -> train, затем eval и predict по всем видео
+    # без аргументов: train (если нет весов), eval, predict
     if len(sys.argv) == 1:
         steps = ([] if DEFAULT_WEIGHTS.exists() else [["train"]]) + [["eval"], ["predict"]]
         print("Без аргументов: " + " -> ".join(s[0] for s in steps))

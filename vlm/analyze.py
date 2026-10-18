@@ -1,4 +1,4 @@
-"""analyze_video(path) -> dict in the exact API schema of the TZ (section 10)."""
+"""Запасной путь без YOLO: VLM по скользящим окнам -> ответ API."""
 import json
 import time
 
@@ -14,7 +14,6 @@ def _load_taxonomy(cfg):
 
 
 def scan_windows(path: str, cfg: VLMConfig):
-    """Run the VLM over sliding windows. Returns (frames, list of per-window answers)."""
     tax = _load_taxonomy(cfg)
     vlm = get_vlm(cfg)
     fps = max(1.0, cfg.frames_per_window / cfg.window_sec)
@@ -73,7 +72,6 @@ def build_result(job_id, frames, events, tax, cfg: VLMConfig):
             desc += f" Возможное нарушение: {rule['doc']}, {rule['clause']}."
         out.append({"type": rule["name_ru"], "timecode_sec": round(e["t_peak"], 2), "description": desc,
                     "evidence_frames": ev,
-                    # extra fields for UI (not part of the public schema)
                     "type_id": e["type"], "confidence": round(e["confidence"], 3),
                     "rule": {k: rule.get(k) for k in ("doc", "clause", "url")}})
     return {"job_id": job_id, "status": "done", "verdict": "violation" if out else "no_violation", "violations": out}

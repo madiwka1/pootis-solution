@@ -125,7 +125,6 @@ const $=s=>document.querySelector(s);
 let file=null, videoURL=null, timer=null;
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 
-// тема
 const applyTheme=t=>{if(t)document.documentElement.setAttribute('data-theme',t)};
 applyTheme(store.get('theme'));
 $('#theme').onclick=()=>{const cur=document.documentElement.getAttribute('data-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');const n=cur==='dark'?'light':'dark';applyTheme(n);store.set('theme',n)};
@@ -183,7 +182,7 @@ function render(j,key){
   const pub={job_id:j.job_id,status:j.status,verdict:j.verdict,violations:v.map(x=>({type:x.type,timecode_sec:x.timecode_sec,description:x.description,evidence_frames:(x.evidence_frames||[]).map(f=>({timestamp_sec:f.timestamp_sec,image_base64:f.image_base64.slice(0,24)+'…'}))}))};
   h+=`</div><details><summary>Ответ API (JSON)</summary><pre>${esc(JSON.stringify(pub,null,2))}</pre></details>`;
   $('#out').innerHTML=h;
-  // .mov (HEVC) Chrome часто не играет — тогда плеер прячем, остаются кадры-доказательства
+  // HEVC .mov Chrome часто не играет - прячем плеер
   const vd=$('#vid');if(vd){vd.onerror=()=>vd.parentElement.classList.remove('show');
     setTimeout(()=>{if(!(vd.videoWidth>0))vd.parentElement.classList.remove('show')},2500)}
   document.querySelectorAll('.tc').forEach(b=>b.onclick=()=>{const vd=$('#vid');if(vd&&videoURL){vd.currentTime=+b.dataset.t;vd.play();vd.scrollIntoView({behavior:'smooth',block:'center'})}});

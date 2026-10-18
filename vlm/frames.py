@@ -1,4 +1,4 @@
-"""Frame sampling with real timestamps (VFR-safe: uses decoder position in ms, not index/fps)."""
+"""Кадры с реальным временем (VFR): позиция декодера в мс, а не индекс/fps."""
 import cv2
 import numpy as np
 
@@ -7,7 +7,6 @@ def video_duration(path: str) -> float:
     cap = cv2.VideoCapture(path)
     n = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    # seek to end for exact duration
     cap.set(cv2.CAP_PROP_POS_AVI_RATIO, 1.0)
     end_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
     cap.release()
@@ -15,7 +14,6 @@ def video_duration(path: str) -> float:
 
 
 def sample_frames(path: str, fps: float):
-    """Decode sequentially, keep frames at ~`fps`. Returns list of (t_sec, RGB ndarray)."""
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         raise ValueError(f"cannot open video: {path}")
@@ -38,7 +36,6 @@ def sample_frames(path: str, fps: float):
 
 
 def make_windows(frames, window_sec, stride_sec, k):
-    """Yield (t_start, t_end, [(t, frame) * k]) windows over sampled frames."""
     if not frames:
         return
     t_last = frames[-1][0]

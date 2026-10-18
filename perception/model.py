@@ -1,21 +1,9 @@
-"""
-Правила поверх детекций YOLO -> события-нарушения + оценка hit/miss и вердикта по видео.
+"""Правила поверх детекций YOLO -> события-нарушения, плюс оценка против разметки.
 
-Вход : data/*-detections.csv или *.jsonl  (новый формат train_yolo.py: video_id,t,frame_idx,track_id,cls,conf,x1..y2
-                                          или старый test.py: video,time_sec,frame,class_name,...)
-       video_labels.csv  (video_id, gt_timecode_sec, type_id, ...)        — события
-       open_labels.xlsx  (наименование файла, таймстемп, нарушение/без)   — вердикт по всем 42 видео
-Выход: data/predicted_events.csv   все события (type_id, start, end, t = таймкод)
-       data/candidates.jsonl       окна для проверки Qwen/VLM (t_from, t_to, type_id, t)
-       data/evaluation.csv         по каждому размеченному событию: HIT / WRONG_TYPE / MISS
-       data/verdicts.csv           по каждому видео: вердикт, TP/FP/FN/TN
-Запуск:
-  python model.py                  оценка с текущими порогами
-  python model.py --tune           перебор порогов: 0 пропусков по видео -> минимум ложных -> максимум HIT
-Правила двух уровней (колонка tier):
-  strong — надёжные, сами дают вердикт (на 42 видео: 0 ложных тревог);
-  weak   — ручной пересчёт и смешение пачек: по рамкам не отличить от нормы, в сервисе их подтверждает Qwen.
-  python model.py --tol 3          допуск таймкода, с
+strong - сами дают вердикт; weak - по рамкам не отличить от нормы, подтверждает Qwen.
+
+  python model.py            оценка с текущими порогами
+  python model.py --tune     перебор порогов
 """
 import argparse
 import itertools
@@ -28,38 +16,38 @@ import numpy as np
 import pandas as pd
 
 BASE = Path(__file__).resolve().parent
-ALIAS = {"X-47": "X-4", "X-48": "X-5"}       # одинаковые файлы (md5): детекции берём у пары
+ALIAS = {"X-47": "X-4", "X-48": "X-5"}  # дубли по md5
 
-# ---- Пороги. Ставятся на полноту: лишнее отсеет Qwen, пропуск не вернуть ----
+# пороги ставим на полноту: лишнее отсеет Qwen, пропуск не вернуть
 CFG = {
     "person_conf": 0.30,
-    "person_y2_min": 0.39,     # низ рамки человека ниже 39% высоты кадра; выше — отражение в стекле / за дверью
-    "obj_conf": 0.20,          # cash, cash_bag, phone, drink, ...
-    "present_frac": 0.40,      # доля обработанных кадров секунды, чтобы считать объект присутствующим
-    "gap_fill_s": 1,           # заливать мигание детектора короче этого
-    "absent_min_s": 2,         # у стола никого >= N с
+    "person_y2_min": 0.39,     # выше - отражение в стекле
+    "obj_conf": 0.20,
+    "present_frac": 0.40,
+    "gap_fill_s": 1,
+    "absent_min_s": 2,
     "safe_open_alone_s": 3,
-    "safe_near_r": 0.5,        # человек «у сейфа»: центр ближе safe_near_r * рост к центру сейфа
+    "safe_near_r": 0.5,
     "phone_min_s": 1,
     "personal_min_s": 2,
-    "entry_persons": 3,        # людей одновременно (кассир + клиент = 2)
-    "entry_min_s": 3,          # 3-й человек >= N с (1-2 с — проход/отражение)
-    "near_px": 40,             # «рядом» (сейф без людей рядом)
-    "machine_px": 10,          # деньги «в машинке» — рамки пересекаются (с запасом N px)
-    "desk_r": 0.35,             # кассир «на месте»: центр человека в радиусе desk_r * рост от точки рабочего места
-    "entry_offset_s": 2,       # таймкод входа: через N с после появления 3-го человека (дошёл до стола)
-    "manual_min_s": 2,         # деньги в руках не у машинки
-    "machine_grace_s": 6,      # если за N с деньги попали в машинку — это нормальный пересчёт
-    "static_px": 12,           # пачка «лежит» — центр сдвигается меньше
+    "entry_persons": 3,        # кассир + клиент = 2
+    "entry_min_s": 3,          # 1-2 с - проход или отражение
+    "near_px": 40,
+    "machine_px": 10,
+    "desk_r": 0.35,
+    "entry_offset_s": 2,
+    "manual_min_s": 2,
+    "machine_grace_s": 6,      # деньги дошли до машинки - нормальный пересчёт
+    "static_px": 12,
     "static_min_s": 3,
-    "rejoin_s": 8,             # новый клиент пришёл в течение N с после ухода прошлого
+    "rejoin_s": 8,
     "merge_window_s": 4,
     "bag_persons": 2,
-    "bag_leave_s": 6,          # сдатчик ушёл в течение N с после того, как сумка у кассира
-    "bag_at_shift_s": 2,       # таймкод: за N с до «сумка у кассира» (момент, когда её ставят на стол)
-    "personal_cash_s": 2,      # напиток считается «при деньгах», если деньги были в пределах N с
+    "bag_leave_s": 6,
+    "bag_at_shift_s": 2,
+    "personal_cash_s": 2,
     "own_bag_min_s": 3,
-    "leave_look_s": 3,         # деньги в работе в последние N с перед уходом клиента        # своя сумка/пальто на столе >= N с
+    "leave_look_s": 3,
 }
 TYPES = ["LEFT_UNATTENDED", "UNAUTHORIZED_ENTRY", "MANUAL_COUNT_NO_CHECK", "PERSONAL_ITEMS",
          "PHONE_AT_WORKPLACE", "COUNT_WITHOUT_CLIENT", "BAG_NO_CHECK", "SAFE_LEFT_OPEN",
@@ -67,7 +55,6 @@ TYPES = ["LEFT_UNATTENDED", "UNAUTHORIZED_ENTRY", "MANUAL_COUNT_NO_CHECK", "PERS
          "DOOR_LEFT_OPEN", "CLIENT_NO_ID", "SAFE_KEY_LEFT"]
 
 
-# ============================================================ загрузка
 def norm(v):
     s = unicodedata.normalize("NFC", Path(str(v)).stem).strip()
     s = s.replace("Х", "X").replace("х", "x").upper().replace("-DETECTIONS", "")
@@ -89,11 +76,10 @@ def load_detections(path: Path) -> pd.DataFrame:
     return subsample(df, EVAL_FPS)
 
 
-EVAL_FPS = 5.0     # сервис читает видео с 5 к/с — оцениваем так же (и в 6 раз быстрее, чем на 30 к/с)
+EVAL_FPS = 5.0  # как в сервисе
 
 
 def subsample(df: pd.DataFrame, fps: float) -> pd.DataFrame:
-    """Оставить по одному кадру на шаг 1/fps (как service/pipeline.read_frames)."""
     if fps <= 0 or df.empty:
         return df
     fr = df.groupby("frame_idx").t.first().sort_index()
@@ -119,12 +105,11 @@ def load_labels(events_csv: Path, verdict_xlsx: Path):
         x = pd.read_excel(verdict_xlsx)
         for _, r in x.iterrows():
             verdict[norm(r.iloc[0])] = str(r.iloc[2]).strip() == "нарушение"
-    else:   # без xlsx: размеченные события = нарушение, остальное неизвестно
+    else:
         verdict = {v: True for v in ev.vid}
     return ev, verdict
 
 
-# ============================================================ признаки по секундам
 def close(s: pd.Series, k: int) -> pd.Series:
     if k <= 0 or s.empty:
         return s
@@ -153,7 +138,7 @@ def near(a, b, m):
 
 
 def inside(a, b, m):
-    """центр рамки a внутри рамки b (с запасом m px): деньги именно В машинке, а не рядом с ней"""
+    """Центр a внутри b: деньги именно в машинке, а не рядом."""
     cx, cy = (a[0] + a[2]) / 2, (a[1] + a[3]) / 2
     return b[0] - m <= cx <= b[2] + m and b[1] - m <= cy <= b[3] + m
 
@@ -166,7 +151,7 @@ def features(df: pd.DataFrame, c=CFG):
     df = df.copy()
     df["sec"] = df.t.astype(int)
     secs = pd.RangeIndex(0, int(df.sec.max()) + 1)
-    # число ОБРАБОТАННЫХ кадров в секунде (а не fps видео) — работает и для 5 к/с, и для 30 к/с
+    # считаем обработанные кадры, а не fps видео
     nfr = df.groupby("sec").frame_idx.nunique().reindex(secs, fill_value=0).replace(0, np.nan)
 
     is_person = (df.cls == "person") & (df.conf >= c["person_conf"]) & (df.y2 >= c["person_y2_min"] * df.img_h)
@@ -181,7 +166,7 @@ def features(df: pd.DataFrame, c=CFG):
 
     n_person = (P.groupby(["sec", "frame_idx"]).size().groupby("sec").median()
                 .reindex(secs, fill_value=0).round())
-    # рабочее место кассира = самая «обжитая» точка, где чаще всего стоит/сидит человек (без лиц, по позиции)
+    # рабочее место = клетка, где человек бывает чаще всего
     F = pd.DataFrame(index=secs)
     F["at_desk"] = False
     anchor = None
@@ -202,7 +187,6 @@ def features(df: pd.DataFrame, c=CFG):
                   "personal": ["drink", "handbag"], "docs": ["folder", "id_card"]}.items():
         F[k] = present(cl)
 
-    # по кадрам: деньги не у машинки, деньги у машинки, телефон у человека, сейф без людей рядом, пачки
     off, onm, ph, safe_alone = {}, {}, {}, {}
     cash_boxes, bag_desk, left_alone, in_hands = {}, {}, {}, {}
     for (sec, fr), g in df.groupby(["sec", "frame_idx"]):
@@ -223,7 +207,6 @@ def features(df: pd.DataFrame, c=CFG):
         in_hands.setdefault(sec, []).append(any(near(a, b, 0) and not any(inside(a, m, c["machine_px"]) for m in M)
                                                 for a in C for b in Pp))
         cash_boxes.setdefault(sec, []).append([tuple(x) for x in C])
-        # ценности, рядом с которыми нет ни одного человека (оставлены): деньги, сумка, документы
         V = g[g.cls.isin(["cash", "cash_bag", "folder", "id_card"]) & (g.conf >= c["obj_conf"])][["x1", "y1", "x2", "y2"]].values
         left_alone.setdefault(sec, []).append(any(not any(near(a, b, c["near_px"]) for b in Pp) for a in V))
 
@@ -237,7 +220,6 @@ def features(df: pd.DataFrame, c=CFG):
     F["cash_on_machine"] = close(sec_mean(onm) >= 0.2, c["gap_fill_s"])
     F["phone_in_hand"] = close(sec_mean(ph) >= 0.3, c["gap_fill_s"])
     F["safe_alone"] = close(sec_mean(safe_alone) >= c["present_frac"], c["gap_fill_s"])
-    # число пачек и «неподвижная пачка» (одна и та же точка >= static_min_s)
     F["n_cash"] = pd.Series({k: np.median([len(x) for x in v]) for k, v in cash_boxes.items()}).reindex(secs, fill_value=0)
     first = {k: v[len(v) // 2] for k, v in cash_boxes.items()}
     static = pd.Series(False, index=secs)
@@ -255,7 +237,6 @@ def features(df: pd.DataFrame, c=CFG):
     return F
 
 
-# ============================================================ правила
 def detect(df: pd.DataFrame, c=CFG) -> pd.DataFrame:
     F = features(df, c)
     ev = []
@@ -265,51 +246,43 @@ def detect(df: pd.DataFrame, c=CFG) -> pd.DataFrame:
 
     seen = F.at_desk.cummax()
     n = F.n_person
-    # ценности ОСТАЛИСЬ без людей рядом (деньги в руках у уходящего кассира — не нарушение)
     valuable = F.left_alone | F.safe_alone
-    for s, e in runs(~F.at_desk & seen, c["absent_min_s"]):     # кассир ушёл с рабочего места (не обязательно из кадра)
+    for s, e in runs(~F.at_desk & seen, c["absent_min_s"]):
         if valuable.loc[s:e].any():
             add("LEFT_UNATTENDED", s, e)
         else:
-            # ценностей YOLO не видит, но нарушение может быть в том, что не детектируется:
-            # незаблокированный компьютер, ключ в сейфе. Решает Qwen по кадрам.
+            # экран, ключ в сейфе YOLO не видит - решает Qwen
             add("LEFT_UNATTENDED", s, e, weak=True)
-    # сейф открыт, у сейфа никого И кассир не за столом. Открытый сейф при кассире на месте —
-    # обычная работа
+    # открытый сейф при кассире на месте - норма
     for s, e in runs(F.safe_alone & ~F.at_desk & seen, c["safe_open_alone_s"]):
         add("SAFE_LEFT_OPEN", s, e)
     for s, e in runs(F.phone_in_hand | F.phone, c["phone_min_s"]):
         add("PHONE_AT_WORKPLACE", s, e)
-    # личные вещи в зоне работы с деньгами: напиток/сумка, пока на столе деньги
     cash_near = close(F.cash, c["personal_cash_s"])
     for s, e in runs(F.personal & cash_near, c["personal_min_s"]):
         add("PERSONAL_ITEMS", s, e)
-    # «сумка» у стола, когда кассир один (клиента нет) — это её вещи (пальто/сумка), а не инкассация
+    # сумка при одном кассире - её вещи, а не инкассация
     bag_desk = F.bag_at_desk if not isinstance(F.bag_at_desk, bool) else pd.Series(False, index=F.index)
     for s, e in runs(F.bag & (n <= 1), c["own_bag_min_s"]):
         bd = bag_desk.loc[s:e]
         add("PERSONAL_ITEMS", s, e, at=int(bd[bd].index[0]) if bd.any() else s)
 
-    # люди: уход клиента (2+ -> 1) и приход (1 -> 2+)
     drops = [s for s in n.index[1:] if n[s - 1] >= 2 and n[s] < 2]
     rises = [s for s in n.index[1:] if n[s - 1] < 2 and n[s] >= 2]
     for s, e in runs(n >= c["entry_persons"], c["entry_min_s"]):
         add("UNAUTHORIZED_ENTRY", s, e, at=min(s + c["entry_offset_s"], e))
 
-    # следующий клиент пришёл, а пачка прошлого лежит на столе
     for d in drops:
         for r in rises:
             if d < r <= d + c["rejoin_s"] and F.cash_static.loc[max(0, d - 3):r + 3].any():
                 add("PREV_CASH_ON_DESK", r, min(r + 3, F.index[-1]), at=r)
                 break
-    # клиент ушёл, пока деньги ещё в обработке
-    # клиент ушёл, пока деньги ещё в обработке. Уход начинается раньше, чем человек пропал из кадра
+    # уход начинается раньше, чем человек пропал из кадра
     for d in drops:
         w = F.loc[max(0, d - c["leave_look_s"]):d]
         if (w.cash | w.cash_on_machine).any():
             add("COUNT_WITHOUT_CLIENT", max(0, d - 3), d, at=max(0, d - 2))
-    # инкассаторская сумка: принесли (>= 2 людей), кассир забрал, и сдатчик ушёл почти сразу — проверки пломбы не было.
-    # Если сдатчик остаётся — идёт приём с проверкой.
+    # сдатчик ушёл сразу после передачи сумки - пломбу не проверили
     for s, e in runs(F.bag & (n >= c["bag_persons"]), 1):
         bd = bag_desk.loc[s:]
         t_desk = int(bd[bd].index[0]) if bd.any() else s
@@ -317,22 +290,21 @@ def detect(df: pd.DataFrame, c=CFG) -> pd.DataFrame:
         if left:
             add("BAG_NO_CHECK", s, left[0], at=max(s, t_desk - c["bag_at_shift_s"]))
 
-    # ---- слабые признаки: по детекциям не отличить от нормы, решает Qwen (tier=weak) ----
+    # weak: решает Qwen
     nc = F.n_cash
     for s in nc.index[1:]:
-        # чужие деньги кладут на пачку: только при клиенте (кассир одна раскладывает свои пачки — норма)
+        # только при клиенте: кассир одна раскладывает свои пачки
         if nc[s - 1] >= 2 and nc[s] < nc[s - 1] and n[s] >= 2 and F.cash_static.loc[max(0, s - c["merge_window_s"]):s].any() \
                 and not F.cash_on_machine.loc[max(0, s - 2):s].any():
             add("CASH_MIXED", s - 1, s, at=s - 1, weak=True)
-    for s, e in runs(F.cash_in_hands, c["manual_min_s"]):         # деньги в руках, не у машинки
+    for s, e in runs(F.cash_in_hands, c["manual_min_s"]):
         if not F.cash_on_machine.loc[s:e + c["machine_grace_s"]].any():
-            add("MANUAL_COUNT_NO_CHECK", s, e, at=(s + e) // 2, weak=True)   # середина эпизода: сам пересчёт, а не момент взятия денег
+            add("MANUAL_COUNT_NO_CHECK", s, e, at=(s + e) // 2, weak=True)  # середина эпизода
     return pd.DataFrame(ev, columns=["type_id", "start", "end", "t", "tier"])
 
 
-# ============================================================ оценка
 def evaluate(pred: pd.DataFrame, ev: pd.DataFrame, verdict: dict, have: set, tol: float, quiet=False, strong_only=True):
-    """strong_only=True — вердикт только по сильным правилам (худший случай: Qwen отклонила все слабые)."""
+    """strong_only: вердикт без слабых правил (худший случай для Qwen)."""
     rows = []
     for _, g in ev.iterrows():
         vid = ALIAS.get(g.vid, g.vid)
@@ -409,7 +381,7 @@ def main():
             print(f"{f.name}: пусто, пропуск"); continue
         vid = df.video_id.iloc[0]
         if vid in files and f.suffix == ".csv":
-            continue                                   # есть и .jsonl, и .csv — берём один
+            continue
         files[vid] = df
     print(f"Видео с детекциями: {len(files)}")
     ev, verdict = load_labels(Path(a.labels), Path(a.verdicts))
@@ -417,7 +389,7 @@ def main():
 
     if a.tune:
         grid = {"present_frac": [0.3, 0.4, 0.5], "desk_r": [0.25, 0.35, 0.5],
-                "absent_min_s": [2, 3], "near_px": [25, 40]}      # 36 комбинаций; ~30 с каждая на CPU
+                "absent_min_s": [2, 3], "near_px": [25, 40]}
         best = None
         for vals in itertools.product(*grid.values()):
             c = dict(cfg, **dict(zip(grid, vals)))
@@ -431,7 +403,7 @@ def main():
         json.dump(cfg, open(BASE / "data" / "best_cfg.json", "w"), indent=1)
 
     pred = run_all(cfg, files)
-    sc = Path(a.det) / "scene_events.csv"          # события по пикселям (scene.py: открытая дверь), если посчитаны
+    sc = Path(a.det) / "scene_events.csv"
     if sc.exists():
         se = pd.read_csv(sc)
         se["vid"] = se.vid.map(norm)
@@ -439,7 +411,7 @@ def main():
         print(f"+ события сцены: {len(se)} ({', '.join(sorted(set(se.type_id)))})")
     out = BASE / "data"; out.mkdir(exist_ok=True)
     pred.to_csv(out / "predicted_events.csv", index=False)
-    with open(out / "candidates.jsonl", "w", encoding="utf-8") as f:     # окна для Qwen
+    with open(out / "candidates.jsonl", "w", encoding="utf-8") as f:
         for _, r in pred.iterrows():
             f.write(json.dumps({"video_id": r.vid, "type_id": r.type_id, "t": float(r.t), "tier": r.tier,
                                 "t_from": max(0.0, float(r.start) - 1.5), "t_to": float(r.end) + 1.5}) + "\n")

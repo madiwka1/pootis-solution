@@ -1,6 +1,6 @@
 """Единый контракт имён между YOLO, правилами и VLM. Менять имена только здесь."""
 
-# YOLO-классы: id -> имя. Ровно такой порядок в perception/data.yaml и perception/cvat_labels.json.
+# порядок должен совпадать с data.yaml
 CLASSES = {
     0: "person",
     1: "cash",
@@ -10,14 +10,13 @@ CLASSES = {
     5: "safe_closed",
     6: "counting_machine",
     7: "handbag",
-    8: "drink",            # стакан / кофе / бутылка / банка
-    9: "id_card",          # удостоверение / карточка клиента
-    10: "folder",          # папка / планшет с документами
+    8: "drink",
+    9: "id_card",
+    10: "folder",
 }
 CLASS_IDS = {v: k for k, v in CLASSES.items()}
 
-# Предразметка готовой COCO-моделью (yolo11m.pt): имя COCO -> наше имя.
-# Используется, чтобы не обводить людей / телефоны / сумки вручную. Ложные срабатывания проверять глазами.
+# предразметка COCO-моделью: имя COCO -> наше
 COCO_MAP = {
     "person": "person",
     "cell phone": "phone",
@@ -25,12 +24,10 @@ COCO_MAP = {
     "cup": "drink",
     "bottle": "drink",
 }
-# laptop из COCO — не класс разметки, но нужен на инференсе как якорь рабочего места кассира.
+# laptop не размечаем, но он якорь рабочего места
 
-# perception/<video_id>.jsonl — одна строка = одна детекция
 DETECTION_FIELDS = ["video_id", "t", "frame_idx", "track_id", "cls", "cls_id", "conf", "bbox", "img_w", "img_h"]
 
-# perception/<video_id>.signals.csv — одна строка = один шаг (0.5 с)
 SIGNAL_COLUMNS = [
     "video_id", "t", "n_person", "person_entered", "person_left",
     "cashier_present", "client_present",
@@ -40,7 +37,7 @@ SIGNAL_COLUMNS = [
     "cash_static_on_desk", "cash_merged", "next_client_arrived",
 ]
 
-# Типы нарушений — те же id, что в vlm/taxonomy.json
+# те же id, что в vlm/taxonomy.json
 VIOLATION_TYPES = [
     "LEFT_UNATTENDED", "UNAUTHORIZED_ENTRY", "MANUAL_COUNT_NO_CHECK", "PERSONAL_ITEMS",
     "PHONE_AT_WORKPLACE", "COUNT_WITHOUT_CLIENT", "BAG_NO_CHECK", "SAFE_LEFT_OPEN",

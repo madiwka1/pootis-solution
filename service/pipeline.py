@@ -1,10 +1,6 @@
-"""Конвейер анализа одного видео -> результат строго по схеме API.
+"""Видео -> YOLO -> правила -> проверка Qwen -> ответ по схеме API.
 
-  YOLO (5 к/с, трекинг) -> правила perception/model.py -> кандидаты
-  -> Qwen-VL (Ollama) подтверждает и описывает -> вердикт, таймкод, 1–2 кадра, пункт закона из taxonomy.json
-
-Если весов YOLO нет — запасной путь: VLM по скользящим окнам (vlm.analyze_video).
-Если VLM недоступна — события правил возвращаются без проверки (лучше лишнее, чем пропуск).
+Без весов YOLO - VLM по скользящим окнам. Без VLM - события правил без проверки.
 """
 import base64
 import json
@@ -31,18 +27,18 @@ OTHER = TAX["other"]
 YOLO_WEIGHTS = os.getenv("YOLO_WEIGHTS", str(ROOT / "weights" / "best.pt"))
 YOLO_FPS = float(os.getenv("YOLO_FPS", "5"))
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "900"))
-MAX_SIDE = int(os.getenv("MAX_SIDE", "960"))                     # длинная сторона кадра в памяти                 # ~30-60 с YOLO на 3050; 3 мин видео = 5 к/с
+MAX_SIDE = int(os.getenv("MAX_SIDE", "960"))
 YOLO_CONF = float(os.getenv("YOLO_CONF", "0.15"))
 YOLO_IMGSZ = int(os.getenv("YOLO_IMGSZ", "960"))
-YOLO_MODE = os.getenv("YOLO_MODE", "predict")                    # predict | track
-DEADLINE_SEC = float(os.getenv("DEADLINE_SEC", "240"))          # лимит клиента 300 с, оставляем запас
-VERIFY_DROP_CONF = float(os.getenv("VERIFY_DROP_CONF", "0.6"))  # VLM отклонила с такой уверенностью -> убрать
+YOLO_MODE = os.getenv("YOLO_MODE", "predict")
+DEADLINE_SEC = float(os.getenv("DEADLINE_SEC", "240"))  # от загрузки; у клиента 300 с
+VERIFY_DROP_CONF = float(os.getenv("VERIFY_DROP_CONF", "0.6"))
 MAX_EVENTS = int(os.getenv("MAX_EVENTS", "5"))
-MAX_WEAK_CHECKS = int(os.getenv("MAX_WEAK_CHECKS", "3"))       # вызовов Qwen на слабые события за видео (время!)
-SKIP_TYPES = set(os.getenv("SKIP_TYPES", "CASH_MIXED").split(","))  # смешение пачек: Qwen подтверждает почти всё, + время
+MAX_WEAK_CHECKS = int(os.getenv("MAX_WEAK_CHECKS", "3"))
+SKIP_TYPES = set(os.getenv("SKIP_TYPES", "CASH_MIXED").split(","))  # Qwen подтверждает почти всё
 VLM_CALL_S = float(os.getenv("VLM_CALL_S", "35"))
-VERIFY_FRAMES = int(os.getenv("VERIFY_FRAMES", "3"))               # запас на один вызов Qwen перед дедлайном
-RULES_CFG = ROOT / "perception" / "data" / "best_cfg.json"      # из `python model.py --tune`, если есть
+VERIFY_FRAMES = int(os.getenv("VERIFY_FRAMES", "3"))
+RULES_CFG = ROOT / "perception" / "data" / "best_cfg.json"  # из model.py --tune
 
 COLORS = {"person": (255, 80, 0), "cash": (0, 0, 255), "cash_bag": (0, 160, 0), "phone": (255, 0, 255),
           "safe_open": (0, 200, 255), "safe_closed": (160, 160, 160), "counting_machine": (255, 140, 0),
@@ -55,9 +51,8 @@ def _log(job, msg):
     print(f"[{job}] {msg}", flush=True)
 
 
-# ------------------------------------------------------------------ видео
 def read_frames(path, fps):
-    """Кадры с реальным временем (PTS, переменный FPS) с шагом 1/fps. -> [(t, bgr, frame_idx)]"""
+    """[(t, bgr, idx)] с шагом 1/fps по реальному времени кадра (VFR)."""
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise ValueError("не удалось открыть видео")
@@ -73,7 +68,7 @@ def read_frames(path, fps):
         if not ok:
             break
         h, w = f.shape[:2]
-        if max(h, w) > MAX_SIDE:                       # 4K/1080p -> экономим память; наши ролики 848 px не трогаем
+        if max(h, w) > MAX_SIDE:
             k = MAX_SIDE / max(h, w)
             f = cv2.resize(f, (int(w * k), int(h * k)), interpolation=cv2.INTER_AREA)
         out.append((round(t, 3), f, idx)); nxt += 1.0 / fps
@@ -92,7 +87,6 @@ def jpeg_b64(bgr, q=85):
     return base64.b64encode(buf.tobytes()).decode()
 
 
-# ------------------------------------------------------------------ YOLO
 def yolo_available():
     try:
         import ultralytics  # noqa: F401
@@ -108,7 +102,7 @@ def run_yolo(frames, vid):
     if _yolo is None:
         _yolo = YOLO(YOLO_WEIGHTS)
         need = {"person", "cash", "safe_open", "safe_closed", "counting_machine"}
-        if not need <= set(_yolo.names.values()):            # базовые веса COCO (yolo26n.pt, yolo11s.pt) — не наши
+        if not need <= set(_yolo.names.values()):  # защита от COCO-весов
             _yolo = None
             raise RuntimeError(f"{YOLO_WEIGHTS}: в весах нет классов {sorted(need)} — это не обученная модель "
                                f"(нужен runs/.../weights/best.pt после train_yolo.py)")
@@ -118,8 +112,7 @@ def run_yolo(frames, vid):
         if YOLO_MODE == "track":
             r = _yolo.track(f, persist=not first, conf=YOLO_CONF, imgsz=YOLO_IMGSZ, device=dev,
                             tracker="bytetrack.yaml", verbose=False)[0]
-        else:   # трекинг на 5 к/с теряет слабые рамки денег (ByteTrack не связывает их между редкими кадрами);
-                # правила track_id не используют — берём все рамки >= YOLO_CONF
+        else:  # трекер на 5 к/с теряет слабые рамки денег
             r = _yolo.predict(f, conf=YOLO_CONF, imgsz=YOLO_IMGSZ, device=dev, verbose=False)[0]
         first = False
         b = r.boxes
@@ -127,7 +120,7 @@ def run_yolo(frames, vid):
         for (x1, y1, x2, y2), c, cf, tid in zip(b.xyxy.tolist(), b.cls.int().tolist(), b.conf.tolist(), ids):
             rows.append(dict(video_id=vid, t=t, frame_idx=idx, track_id=tid, cls=_yolo.names[c], cls_id=c,
                              conf=cf, x1=x1, y1=y1, x2=x2, y2=y2, img_w=f.shape[1], img_h=f.shape[0]))
-    try:                       # освободить VRAM перед VLM (4 ГБ: вместе не помещаются)
+    try:  # VRAM под Qwen
         torch.cuda.empty_cache()
     except Exception:
         pass
@@ -148,7 +141,6 @@ def draw(bgr, det, t, classes=None):
     return img
 
 
-# ------------------------------------------------------------------ VLM
 def get_vlm_safe(job):
     cfg = VLMConfig()
     if cfg.backend == "none":
@@ -162,7 +154,6 @@ def get_vlm_safe(job):
 
 
 def desk_crop(bgr, anchor, side=448):
-    """Крупный план стола кассира (ноутбук, сейф, столешница) вокруг точки рабочего места."""
     H, W = bgr.shape[:2]
     cx, cy, h = anchor
     x0, x1 = int(max(0, cx - 1.5 * h)), int(min(W, cx + 1.5 * h))
@@ -175,19 +166,19 @@ def desk_crop(bgr, anchor, side=448):
 
 
 def verify_left(vlm, frames, ev, anchor):
-    """LEFT_UNATTENDED: кадры ПОСЛЕ ухода, крупно стол; решение по чек-листу, а не по общему «нарушение?»."""
+    """Чек-лист вместо общего вопроса «нарушение?»: маленькая модель так ошибается реже."""
     end = frames[-1][0]
     ts = [min(end, ev["t"] + d) for d in (2.0, 3.5, 5.0)]
     sel = [nearest(frames, t) for t in ts]
     full = sel[1][1]
     k = 448 / max(full.shape[:2])
-    rgb = [cv2.cvtColor(cv2.resize(full, None, fx=k, fy=k), cv2.COLOR_BGR2RGB)]          # [0] вся комната
-    rgb += [cv2.cvtColor(desk_crop(f[1], anchor), cv2.COLOR_BGR2RGB) for f in sel[1:]]   # [1..] крупно стол
+    rgb = [cv2.cvtColor(cv2.resize(full, None, fx=k, fy=k), cv2.COLOR_BGR2RGB)]
+    rgb += [cv2.cvtColor(desk_crop(f[1], anchor), cv2.COLOR_BGR2RGB) for f in sel[1:]]
     sel = [sel[1]] + sel[1:]
     a = parse_json(vlm.generate([(rgb, left_checklist_prompt([f[0] for f in sel]))])[0])
     screen = str(a.get("laptop_screen", "")).lower()
     left_things = screen == "open_program" or a.get("key_in_safe") is True or a.get("valuables_on_desk") is True
-    # кассир на месте (правило ошиблось: ушёл клиент, а не кассир) -> не нарушение
+    # кассир на месте: ушёл клиент, а не кассир
     a["confirmed"] = left_things and a.get("person_at_desk") is not True
     a["confidence"] = 0.8 if a["confirmed"] else 0.7
     fi = a.get("frame_index", -1)
@@ -203,14 +194,12 @@ def verify(vlm, cfg, frames, ev, anchor=None):
     win = [f for f in frames if t0 <= f[0] <= t1] or [nearest(frames, ev["t"])]
     idx = np.linspace(0, len(win) - 1, num=min(VERIFY_FRAMES, len(win))).round().astype(int)
     sel = [win[i] for i in idx]
-    # крупный план рабочего места: руки, деньги, машинка видны лучше, а токенов меньше -> быстрее
     rgb = [cv2.cvtColor(desk_crop(f[1], anchor) if anchor is not None else f[1], cv2.COLOR_BGR2RGB) for f in sel]
     if ev["type_id"] == "MANUAL_COUNT_NO_CHECK":
         raw = vlm.generate([(rgb, manual_checklist_prompt([f[0] for f in sel]))])[0]
         a = parse_json(raw)
         if "confirmed" not in a and ("cash_in_hands" in a or "counting_by_hand" in a):
-            # все три ответа должны сходиться: деньги в руках И пересчёт пальцами И без машинки
-            # («counting=True при hands=False» — противоречие, давало ложные тревоги)
+            # все три ответа должны сходиться, иначе ложные тревоги
             a["confirmed"] = (a.get("cash_in_hands") is True and a.get("counting_by_hand") is True
                               and a.get("machine_used") is not True)
             a["confidence"] = 0.8
@@ -221,7 +210,7 @@ def verify(vlm, cfg, frames, ev, anchor=None):
         a = parse_json(raw)
     _log("vlm", f"{ev['type_id']} @{ev['t']}: confirmed={a.get('confirmed')} conf={a.get('confidence')}"
          + (f" | ответ модели: {raw[:200]}" if "confirmed" not in a or a.get("error") else ""))
-    if "confirmed" not in a:                               # mock / старый формат ответа
+    if "confirmed" not in a:
         a["confirmed"] = str(a.get("type", "NONE")).upper() not in ("NONE", "ERROR")
     fi = a.get("frame_index", -1)
     if isinstance(fi, int) and 0 <= fi < len(sel):
@@ -229,7 +218,6 @@ def verify(vlm, cfg, frames, ev, anchor=None):
     return a
 
 
-# ------------------------------------------------------------------ сборка ответа
 def describe(ev):
     rule = TYPES.get(ev["type_id"], OTHER)
     text = (ev.get("vlm_desc") or "").strip() or f"Обнаружены признаки: {rule['name_ru'].lower()}."
@@ -268,12 +256,11 @@ def dedup(evs, gap=3.0):
 
 
 def analyze(path, job_id="local", submitted_at=None):
-    """Главная функция: путь к видео -> dict по схеме API (+ поля с '_' для интерфейса).
-    submitted_at — время загрузки: клиент ждёт не больше 5 минут С МОМЕНТА ЗАГРУЗКИ, поэтому ожидание в очереди
-    тоже съедает бюджет. Если очередь длинная, Qwen проверяет меньше событий (сильные правила остаются)."""
+    """Путь к видео -> ответ API (+ поля с '_' для интерфейса).
+    Дедлайн считается от submitted_at: очередь тоже съедает бюджет."""
     start = submitted_at or time.time()
     vid = Path(path).stem
-    # длинное видео: снижаем частоту кадров, чтобы YOLO + Qwen уложились в 5 минут (не больше MAX_FRAMES кадров)
+    # длинное видео: меньше к/с, чтобы уложиться в дедлайн
     cap = cv2.VideoCapture(str(path))
     dur = (cap.get(cv2.CAP_PROP_FRAME_COUNT) / (cap.get(cv2.CAP_PROP_FPS) or 30)) if cap.isOpened() else 0
     cap.release()
@@ -285,16 +272,16 @@ def analyze(path, job_id="local", submitted_at=None):
     det, events = None, []
 
     if yolo_available():
-        import model as rules                                   # perception/model.py
+        import model as rules
         cache = Path(os.getenv("DET_CACHE", "")) / f"{vid}-{YOLO_MODE}-detections.csv" if os.getenv("DET_CACHE") else None
         if cache is not None and cache.exists() and cache.stat().st_mtime > Path(YOLO_WEIGHTS).stat().st_mtime:
-            det = pd.read_csv(cache)                            # повторный прогон: YOLO не пересчитываем
+            det = pd.read_csv(cache)
             _log(job_id, f"детекции из кэша {cache.name}")
         else:
             det = run_yolo(frames, vid)
             if cache is not None:
                 cache.parent.mkdir(parents=True, exist_ok=True); det.to_csv(cache, index=False)
-        if os.getenv("DUMP_DET"):                               # отладка: сохранить детекции сервиса для сравнения
+        if os.getenv("DUMP_DET"):
             Path(os.getenv("DUMP_DET")).mkdir(parents=True, exist_ok=True)
             det.to_csv(Path(os.getenv("DUMP_DET")) / f"{vid}-service-detections.csv", index=False)
         cfg = dict(rules.CFG)
@@ -303,7 +290,7 @@ def analyze(path, job_id="local", submitted_at=None):
         ev = rules.detect(det, cfg) if not det.empty else pd.DataFrame(columns=["type_id", "start", "end", "t"])
         events = [{"type_id": r.type_id, "t": float(r.t), "source": "yolo+rules",
                    "tier": getattr(r, "tier", "strong")} for r in ev.itertuples()]
-        try:                                                    # открытая дверь — по пикселям (perception/scene.py)
+        try:
             import scene
             n_person = rules.features(det, cfg).n_person if not det.empty else None
             for ty, s, e, t in scene.door_events(scene.door_change(frames, det), n_person):
@@ -326,7 +313,6 @@ def analyze(path, job_id="local", submitted_at=None):
     events = [e for e in events if e["type_id"] not in SKIP_TYPES]
     events = dedup(events, gap=10.0)
     if events and events[0].get("source") in ("yolo+rules", "scene"):
-        # порядок проверки: сильные -> «ушла» -> ручной пересчёт -> прочее; слабых не больше MAX_WEAK_CHECKS
         prio = {"LEFT_UNATTENDED": 0, "MANUAL_COUNT_NO_CHECK": 1}
         events.sort(key=lambda e: (e.get("tier") == "weak", prio.get(e["type_id"], 2), e["t"]))
         n_weak = 0
@@ -343,14 +329,14 @@ def analyze(path, job_id="local", submitted_at=None):
             pass
         kept = []
         for ev in events:
-            if ev.get("source") == "scene":                # по пикселям надёжно, Qwen дверь различает хуже
+            if ev.get("source") == "scene":  # дверь Qwen видит хуже пикселей
                 ev["vlm_status"] = "not_needed"; kept.append(ev); continue
-            if ev.get("tier") == "dropped":                 # лимит проверок: слабое без подтверждения не выдаём
+            if ev.get("tier") == "dropped":
                 continue
             if vlm is None or time.time() - start > DEADLINE_SEC - VLM_CALL_S:
-                if ev.get("tier") == "weak":                # не успели проверить слабое — не выдаём (ложные тревоги)
+                if ev.get("tier") == "weak":
                     continue
-                # без проверки оставляем всё: пропуск хуже лишнего срабатывания
+                # пропуск хуже лишнего срабатывания
                 ev["vlm_status"] = "skipped"; kept.append(ev); continue
             try:
                 if ev["type_id"] == "LEFT_UNATTENDED" and anchor is not None:
@@ -360,7 +346,7 @@ def analyze(path, job_id="local", submitted_at=None):
             except Exception as e:
                 ev["vlm_status"] = f"error: {e}"[:80]; kept.append(ev); continue
             conf = float(a.get("confidence", 0) or 0)
-            weak = ev.get("tier") == "weak"      # ручной пересчёт / смешение пачек: по детекциям не отличить от нормы
+            weak = ev.get("tier") == "weak"
             if (weak and not a["confirmed"]) or (not a["confirmed"] and conf >= VERIFY_DROP_CONF):
                 _log(job_id, f"VLM отклонила {ev['type_id']}@{ev['t']} ({ev.get('tier')})"); continue
             ev["vlm_status"] = "confirmed" if a["confirmed"] else "unsure"
@@ -377,7 +363,6 @@ def analyze(path, job_id="local", submitted_at=None):
 
 
 def warmup():
-    """Загрузить YOLO и Qwen заранее, чтобы первое видео не ждало загрузки моделей."""
     t0 = time.time()
     try:
         if yolo_available():
@@ -394,7 +379,6 @@ def warmup():
 
 
 def public(res):
-    """Ровно схема API: убрать служебные поля с '_'."""
     keep = ("type", "timecode_sec", "description", "evidence_frames")
     return {"job_id": res["job_id"], "status": res["status"], "verdict": res["verdict"],
             "violations": [{k: x[k] for k in keep} for x in res.get("violations", [])]}

@@ -30,7 +30,6 @@ Rules: choose NONE unless the action is clearly visible. confidence>0.7 only if 
 
 
 def verify_prompt(taxonomy: dict, type_id: str, frame_times) -> str:
-    """Проверка кандидата от правил YOLO: подтвердить / отклонить + описание того, что видно."""
     t = next((x for x in taxonomy["types"] if x["id"] == type_id), None)
     what = t["visual"] if t else "a cash-discipline risk"
     times = ", ".join(f"[{i}] t={tt:.1f}s" for i, tt in enumerate(frame_times))
@@ -46,8 +45,7 @@ Do not explain your reasoning. Output only the JSON. /no_think"""
 
 
 def left_checklist_prompt(frame_times) -> str:
-    """Кассир ушла с рабочего места: что осталось. Конкретные вопросы — маленькой модели проще, чем «нарушение?».
-    Кадр [0] — вся комната, остальные — крупный план стола."""
+    """Кадр [0] - вся комната, остальные - крупно стол."""
     times = ", ".join(f"[{i}] t={tt:.1f}s" for i, tt in enumerate(frame_times))
     return f"""Image [0] shows the whole cash room. The other images are close-up crops of the cashier's desk: {times}.
 Answer each question only from what is visible.
@@ -68,7 +66,6 @@ Do not explain your reasoning. Output only the JSON. /no_think"""
 
 
 def manual_checklist_prompt(frame_times) -> str:
-    """Ручной пересчёт: конкретные вопросы вместо «нарушение?» (на общий вопрос Qwen3 начинает «размышлять»)."""
     times = ", ".join(f"[{i}] t={tt:.1f}s" for i, tt in enumerate(frame_times))
     return f"""The images are close-up crops of the cashier's workplace, consecutive frames: {times}.
 Answer each question only from what is visible.
@@ -84,12 +81,11 @@ Do not explain your reasoning. Output only the JSON. /no_think"""
 
 
 def parse_json(text: str) -> dict:
-    """JSON из ответа модели. Qwen3 может сначала «думать» (<think>…</think>) — берём ПОСЛЕДНИЙ корректный
-    JSON-объект после размышлений; если JSON не дописан, вытаскиваем поля чек-листа из текста."""
+    """Последний валидный JSON после <think>; если его нет - поля чек-листа регулярками."""
     import re
     raw = text or ""
     body = re.sub(r"<think>.*?</think>", "", raw, flags=re.S)
-    if "<think>" in body:                                   # размышление оборвалось — JSON нет, остался только текст
+    if "<think>" in body:
         body = body.split("<think>", 1)[0]
     found = []
     for src in (body, raw):
@@ -113,7 +109,6 @@ def parse_json(text: str) -> dict:
     good = [d for d in found if isinstance(d, dict) and any(k in d for k in keys) and "<" not in str(d.get("laptop_screen", ""))]
     if good:
         return good[-1]
-    # запасной путь: модель рассуждала текстом — ищем явные формулировки
     low = raw.lower()
     out = {"type": "NONE", "confidence": 0.0, "frame_index": -1, "description_ru": "", "_raw": raw[:300]}
     m = re.search(r'laptop_screen"?\s*[:=]\s*"?(open_program|lock_screen|off|not_visible)', low)

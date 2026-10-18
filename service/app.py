@@ -36,7 +36,7 @@ app = FastAPI(title="pootis-solution: cash desk audit", version="1.0")
 
 
 @app.on_event("startup")
-def _on_startup():             # сервер сначала начинает слушать порт, потом грузит модели в фоне
+def _on_startup():  # модели грузим в фоне, порт сразу
     threading.Thread(target=_start, daemon=True).start()
 JOBS: dict = {}
 Q: "queue.Queue[str]" = queue.Queue()
@@ -49,7 +49,7 @@ def _save(job_id):
 
 
 def _worker():
-    while True:                                   # один GPU — одна задача за раз, остальные ждут в очереди
+    while True:  # один GPU - одна задача
         job_id = Q.get()
         j = JOBS[job_id]
         try:
@@ -61,13 +61,13 @@ def _worker():
         j["finished_at"] = time.time()
         _save(job_id)
         try:
-            os.remove(j["path"])                  # видео не храним
+            os.remove(j["path"])
         except OSError:
             pass
 
 
 def _start():
-    pipeline.warmup()          # модели в память до первого запроса
+    pipeline.warmup()
     _worker()
 
 
@@ -109,7 +109,7 @@ def job(job_id: str, x_api_key: str = Header(None), details: int = 0):
         j = json.loads(p.read_text())
     if j["status"] != "done":
         return {"job_id": job_id, "status": j["status"], **({"error": j["error"]} if j.get("error") else {})}
-    if details:                                    # интерфейс: + пункт закона, источник, время обработки
+    if details:  # для интерфейса
         return JSONResponse({k: v for k, v in j.items() if k not in ("path",)})
     return pipeline.public(j)
 
